@@ -26,5 +26,6 @@ https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
 ## Report
 
 Please Click on the given for the details analysis study report of this project
+
 http://htmlpreview.github.io/?https://github.com/NarayananAmudha/PracticalMachineLearning/blob/master/Pred_Model_Sel.html
 
