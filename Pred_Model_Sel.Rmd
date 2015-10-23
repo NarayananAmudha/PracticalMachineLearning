@@ -1,0 +1,160 @@
+---
+title: "Practical Machine Learning - Course Project"
+output: html_document
+---
+
+## Synopsis
+
+This report is part of Coursera **Practical Machine Learning ** project. The goal of this project is to select **best Prediction Model ** to classify the excercise patters of any  participants as
+
+- Class A : Exactly according to the specification
+- Class B : Throwing the elbows to the front
+- Class C : Lifting the dumbbell only halfway
+- Class D : Lowering the dumbbell only halfway
+- Class E : Throwing the hips to the front
+
+with the raw data recorded from accelerometers/sensors on the belt, forearm, arm, and dumbell .Prediction can be done by training different model(Decision Tree,Random forest,GBM,SVM etc) with sample raw data collected from 6 participants and test it with the test data. Compare the accuracy of each model to select best model to **predict varaible Classe ** with data of any Participants.The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+
+## Data Processing
+### Load Library and data:
+
+Load the required library and Download both training and test data set from the link. 
+
+```{r  warning=FALSE,message=FALSE, c}
+#Load required library
+library(caret);library(rpart);library(randomForest);library(rattle);library(rpart.plot) 
+setInternet2(TRUE)
+
+#Download the data
+# If a data directory does not exist, create the directory and download the data set into it.
+if(!file.exists("./data")){ 
+  dir.create("./data"); destfile1="./data/pml-testing.csv"; destfile2="./data/pml-training.csv"
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile1)
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile2)
+  }
+traindata <- read.csv("./data/pml-training.csv", na.strings=c("NA",""), header=TRUE)
+testdata <- read.csv("./data/pml-testing.csv", na.strings=c("NA",""), header=TRUE)
+
+# Checking for the number of variables and observations
+cat("Dimension of pml-training.csv : ",dim(traindata)); cat("Dimension of pml-testing.csv : ", dim(testdata));
+```
+### Pre-process Data:
+
+- Remove those variables (user_name  raw_timestamp_part_1	raw_timestamp_part_2	cvtd_timestamp	new_window	num_window) which will not provide much weightage for prediction
+- Remove near zero covariates
+- Remove Columns with more than 80% missing values
+
+```{r  warning='FALSE', cache=TRUE}
+
+Cleandata <- function(dataFrame){
+# 1.  Deleting variables containing User,timestamp and window size which are not used ( Columns 1 to 7)
+    subsetTraining <- dataFrame[,-c(1:7)] 
+
+# 2. Remove near Zero covariates  
+    nsv <- nearZeroVar(subsetTraining, saveMetrics = T)
+    subsetTraining <- subsetTraining[,!nsv$nzv]
+
+# 3. Remove Variables  that have more than  80% threshold of NA's 
+  nav <- sapply(colnames(subsetTraining), function(x) 
+  if(sum(is.na(subsetTraining[, x])) > 0.8*nrow(subsetTraining)){return(T)}else{return(F)})
+    procTraining <- subsetTraining[, !nav]
+
+}
+Cleantrain<-Cleandata(traindata);
+dim(Cleantrain); 
+```
+
+The training set has  `r nrow(Cleantrain)`  samples and  `r ncol(Cleantrain) - 1`  (excluding the "classe" variable) potential predictors after cleaning.
+
+### Partition Data:
+To estimate the out-of-sample error,  randomly split the full training data into two sets as training (70%) and testing (30%).
+
+```{r cache=TRUE}
+# split data into two parts
+set.seed(123)
+inTrain <- createDataPartition(y=Cleantrain$classe, p=0.7, list=FALSE)
+training <- Cleantrain[inTrain,]
+testing <- Cleantrain[-inTrain,]
+
+```
+## Machine Learning Models Evaluation Process
+### Train Models: 
+Train the Splitted data with **classification tree and Random Forest Model **
+
+- **Train Training Data with Classification tree model  **
+```{r cache=TRUE}
+## Classification tree model
+modFitCtm <- rpart(classe ~ ., data=training, method="class")
+#fancyRpartPlot(modFitCtm,under.cex= 0.9) # Plot nder text is too small to view in html
+rpart.plot(modFitCtm, main="Fig: 1 Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+- **Train Training Data  with Random forest model **
+```{r cache=TRUE}
+## Random forest Model
+modFitRfm <- randomForest(classe ~. , data=training);
+varImpPlot(modFitRfm ,main="Fig: 2 Random Forest Features Ranking ")
+
+```
+
+### Predict Test data with Trained Models:
+To find the best fitted model, test our splitted 30 % of test dataset against each model as shown below
+
+- **Predict Testing Data  with Classification tree model  **
+```{r cache=TRUE}
+## Classification tree model
+prediction1 <- predict(modFitCtm, testing,type = "class")
+ctm<-confusionMatrix(prediction1, testing$classe)
+ctm$table
+```
+
+- **Predict Testing Data with Random forest Model  **
+```{r cache=TRUE}
+## Random forest Model
+prediction2 <- predict(modFitRfm, testing)
+rfm<-confusionMatrix(prediction2, testing$classe)
+rfm$table
+```
+
+### Compare Accuracy of Models:
+
+- **Accuracy of Classification tree model **
+```{r cache=TRUE}
+ctm$overall
+```
+- **Accuracy of Random Forest model **
+```{r cache=TRUE}
+rfm$overall
+rfmAccur <- rfm$overall['Accuracy']
+```
+
+Random Forest model Accuracy `r rfmAccur` is much better in comparing to Classification tree model Accuracy `r ctm$overall['Accuracy']`.
+
+## Best Model Selection and Prediction
+Comparing model accuracy of the two above generated models -random forests and classification tree, **Random forests model ** has overall better accuracy.Estimated __out of sample error rate__ for the random forests model is `r 1 - rfmAccur`  which is very low
+
+### Prediction with best model:
+Predict the given new test set through best model **Random Forest ** and output results (Predicted Value of Classe Variable) for automatic grader of coursera Submission.
+
+```{r}
+# predict on test set
+(prediction <- as.character(predict(modFitRfm, newdata=testdata)))
+
+
+# create function to write predictions to files
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("./output/problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+# create prediction files to submit
+pml_write_files(prediction)
+```
+
+## Conclusion
+From the above process ,it look like **Randow forest Model is overfit ** with accuracy of `r rfmAccur` with the given processed trained data . However, we cannot expect the model to predict with same accuracy with different set of situations like all data collected with no NA and/or using different device, then we may need to retrain model to perform same as shown in the analysis or it may fail to predict with better accuracy.
+       
